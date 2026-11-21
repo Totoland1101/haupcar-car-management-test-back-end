@@ -1,0 +1,71 @@
+const { z } = require('zod');
+
+const CAR_STATUSES = ['available', 'in_use', 'maintenance', 'inactive'];
+
+const SORTABLE_FIELDS = [
+  'registrationNumber',
+  'brand',
+  'model',
+  'year',
+  'mileage',
+  'createdAt',
+  'updatedAt',
+];
+
+const maxYear = new Date().getFullYear() + 1;
+
+function requiredText(label, max) {
+  return z
+    .string({ error: `${label} is required` })
+    .trim()
+    .min(1, `${label} is required`)
+    .max(max, `${label} must be at most ${max} characters`);
+}
+
+function optionalText(label, max) {
+  return z
+    .string({ error: `${label} must be text` })
+    .trim()
+    .max(max, `${label} must be at most ${max} characters`)
+    .nullish();
+}
+
+const carInputSchema = z.object({
+  registrationNumber: requiredText('Registration number', 20)
+    // "1กข  1234" and "1กข 1234" should count as the same plate.
+    .transform((value) => value.replace(/\s+/g, ' ').toUpperCase()),
+  province: requiredText('Province', 50),
+  brand: requiredText('Brand', 50),
+  model: requiredText('Model', 50),
+  year: z
+    .number({ error: 'Year must be a number' })
+    .int('Year must be a whole number')
+    .min(1900, 'Year must be 1900 or later')
+    .max(maxYear, `Year must be ${maxYear} or earlier`)
+    .nullish(),
+  color: optionalText('Color', 30),
+  mileage: z
+    .number({ error: 'Mileage must be a number' })
+    .int('Mileage must be a whole number')
+    .min(0, 'Mileage cannot be negative')
+    .max(10_000_000, 'Mileage is too large')
+    .nullish(),
+  status: z
+    .enum(CAR_STATUSES, { error: `Status must be one of: ${CAR_STATUSES.join(', ')}` })
+    .default('available'),
+  notes: optionalText('Notes', 1000),
+});
+
+const listQuerySchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  status: z.enum(CAR_STATUSES).optional(),
+  brand: z.string().trim().max(50).optional(),
+  sortBy: z.enum(SORTABLE_FIELDS).default('updatedAt'),
+  order: z.enum(['asc', 'desc']).default('desc'),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
+});
+
+const idSchema = z.coerce.number().int().positive();
+
+module.exports = { CAR_STATUSES, SORTABLE_FIELDS, carInputSchema, listQuerySchema, idSchema };

@@ -1,0 +1,31 @@
+const config = require('../config/config');
+const db = require('../db/models');
+const { createApp } = require('./app');
+
+async function main() {
+  // Fail at startup, not on the first request, if PostgreSQL can't be reached.
+  await db.sequelize.authenticate();
+
+  const app = createApp({ db, corsOrigin: config.corsOrigin });
+
+  const server = app.listen(config.port, () => {
+    const { host, port, database } = db.sequelize.config;
+    console.log(`API listening on http://localhost:${config.port}`);
+    console.log(`Database: postgres://${host}:${port}/${database}`);
+  });
+
+  function shutdown() {
+    server.close(async () => {
+      await db.sequelize.close();
+      process.exit(0);
+    });
+  }
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
