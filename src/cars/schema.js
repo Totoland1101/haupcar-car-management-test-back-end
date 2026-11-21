@@ -1,6 +1,7 @@
 const { z } = require('zod');
 
 const CAR_STATUSES = ['available', 'in_use', 'maintenance', 'inactive'];
+const FUEL_TYPES = ['gasoline', 'diesel', 'hybrid', 'plug_in_hybrid', 'electric', 'lpg', 'ngv'];
 
 const SORTABLE_FIELDS = [
   'registrationNumber',
@@ -52,6 +53,12 @@ const carInputSchema = z.object({
   province: requiredText('Province', 50),
   brand: requiredText('Brand', 50),
   model: requiredText('Model', 50),
+  fuelType: z.enum(FUEL_TYPES, {
+    error: (issue) =>
+      issue.input === undefined || issue.input === null
+        ? 'Fuel type is required'
+        : `Fuel type must be one of: ${FUEL_TYPES.join(', ')}`,
+  }),
   year: z
     .number({ error: 'Year must be a number' })
     .int('Year must be a whole number')
@@ -91,4 +98,4 @@ const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(10),
 });
 
-module.exports = { CAR_STATUSES, SORTABLE_FIELDS, carInputSchema, listQuerySchema, today };
+module.exports = { CAR_STATUSES, FUEL_TYPES, SORTABLE_FIELDS, carInputSchema, listQuerySchema, today };

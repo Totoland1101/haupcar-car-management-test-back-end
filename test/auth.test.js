@@ -145,7 +145,7 @@ describe('protected routes', () => {
 });
 
 describe('permissions', () => {
-  const car = { registrationNumber: '1กข 1234', province: 'กรุงเทพมหานคร', brand: 'Toyota', model: 'Yaris', registeredMileage: 0 };
+  const car = { registrationNumber: '1กข 1234', province: 'กรุงเทพมหานคร', brand: 'Toyota', model: 'Yaris', fuelType: 'gasoline', registeredMileage: 0 };
 
   test('a viewer can look at cars but not change them', async () => {
     const viewer = await loginAs(app, db, 'viewer', 'Viewer');

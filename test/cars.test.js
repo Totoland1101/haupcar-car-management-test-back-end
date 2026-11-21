@@ -13,6 +13,7 @@ const yaris = {
   province: 'กรุงเทพมหานคร',
   brand: 'Toyota',
   model: 'Yaris Ativ',
+  fuelType: 'gasoline',
   year: 2023,
   color: 'White',
   mileage: 15200,
@@ -26,6 +27,7 @@ const city = {
   province: 'เชียงใหม่',
   brand: 'Honda',
   model: 'City',
+  fuelType: 'gasoline',
   registeredMileage: 0,
   status: 'maintenance',
 };
@@ -66,12 +68,13 @@ describe('POST /api/cars', () => {
     assert.equal(res.body.createdAt, res.body.updatedAt);
   });
 
-  test('only requires plate, province, brand, model and mileage at registration', async () => {
+  test('only requires plate, province, brand, model, fuel type and mileage at registration', async () => {
     const car = await createCar({
       registrationNumber: 'กข 1',
       province: 'ตาก',
       brand: 'Isuzu',
       model: 'D-Max',
+      fuelType: 'diesel',
       registeredMileage: 0,
     });
 
@@ -95,7 +98,7 @@ describe('POST /api/cars', () => {
       .expect(400);
 
     const fields = res.body.error.details.map((d) => d.field).sort();
-    assert.deepEqual(fields, ['brand', 'model', 'province', 'registeredMileage', 'registrationNumber', 'status', 'year']);
+    assert.deepEqual(fields, ['brand', 'fuelType', 'model', 'province', 'registeredMileage', 'registrationNumber', 'status', 'year']);
   });
 
   test('rejects a plate that already exists in the same province', async () => {
@@ -312,5 +315,24 @@ describe('registration date and mileage at registration', () => {
     await createCar({ ...city, registeredOn: '2023-01-15' });
     const res = await api.get('/api/cars?sortBy=registeredOn&order=asc').expect(200);
     assert.deepEqual(res.body.data.map((c) => c.registeredOn), ['2023-01-15', '2024-03-01']);
+  });
+});
+
+describe('fuel type', () => {
+  test('is stored, and can be changed', async () => {
+    const car = await createCar({ ...yaris, fuelType: 'hybrid' });
+    assert.equal(car.fuelType, 'hybrid');
+
+    const res = await api.put(`/api/cars/${car.id}`).send({ ...yaris, fuelType: 'electric' }).expect(200);
+    assert.equal(res.body.fuelType, 'electric');
+  });
+
+  test('is required and must be a known type', async () => {
+    const { fuelType, ...withoutFuel } = yaris;
+    const missing = await api.post('/api/cars').send(withoutFuel).expect(400);
+    assert.deepEqual(missing.body.error.details, [{ field: 'fuelType', message: 'Fuel type is required' }]);
+
+    const unknown = await api.post('/api/cars').send({ ...yaris, fuelType: 'steam' }).expect(400);
+    assert.match(unknown.body.error.details[0].message, /^Fuel type must be one of: gasoline, diesel/);
   });
 });

@@ -1,4 +1,4 @@
-const { CAR_STATUSES } = require('../../src/cars/schema');
+const { CAR_STATUSES, FUEL_TYPES } = require('../../src/cars/schema');
 
 module.exports = (sequelize, DataTypes) => {
   const Car = sequelize.define(
@@ -26,6 +26,13 @@ module.exports = (sequelize, DataTypes) => {
       model: {
         type: DataTypes.STRING(50),
         allowNull: false,
+      },
+      // Empty only for cars added before the field existed
+      fuelType: {
+        type: DataTypes.STRING(20),
+        field: 'fuel_type',
+        allowNull: true,
+        validate: { isIn: [FUEL_TYPES] },
       },
       year: {
         type: DataTypes.INTEGER,

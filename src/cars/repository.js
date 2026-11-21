@@ -9,6 +9,7 @@ const WRITABLE_FIELDS = [
   'province',
   'brand',
   'model',
+  'fuelType',
   'year',
   'color',
   'mileage',
