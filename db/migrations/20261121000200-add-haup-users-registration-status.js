@@ -74,7 +74,7 @@ module.exports = {
       // Removing the permission also removes it from every role (ON DELETE CASCADE).
       await queryInterface.bulkDelete('haup_permissions', { code: 'user.approve' }, { transaction });
 
-      // Registrations that never got a role can't satisfy NOT NULL again, so they go.
+      // Registrations that never got a role can't satisfy NOT NULL again, so they are deleted.
       await queryInterface.bulkDelete('haup_users', { role_id: null }, { transaction });
       await queryInterface.sequelize.query('ALTER TABLE haup_users ALTER COLUMN role_id SET NOT NULL', {
         transaction,

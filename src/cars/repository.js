@@ -8,7 +8,7 @@ const WRITABLE_FIELDS = ['registrationNumber', 'province', 'brand', 'model', 'ye
 
 class DuplicatePlateError extends Error {}
 
-// PUT replaces the whole record, so a field missing from the input is cleared rather than kept.
+// PUT replaces the whole record, so a field missing from the input becomes null.
 function toAttributes(input) {
   return Object.fromEntries(WRITABLE_FIELDS.map((field) => [field, input[field] ?? null]));
 }

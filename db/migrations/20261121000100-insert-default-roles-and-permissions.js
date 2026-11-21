@@ -1,8 +1,8 @@
 'use strict';
 
-// The app checks these permission codes (src/auth/permissions.js), so they are created by a
-// migration. The optional seed script only adds demo users. The values are written out here
-// instead of imported, so this migration keeps working if the app code changes later.
+// The app checks these permission codes (src/auth/permissions.js), so a migration creates them
+// along with the default roles. The values are copied here, so this migration keeps working
+// if the app code changes later.
 const PERMISSIONS = [
   { code: 'car.view', name: 'View cars', module: 'car' },
   { code: 'car.create', name: 'Add cars', module: 'car' },

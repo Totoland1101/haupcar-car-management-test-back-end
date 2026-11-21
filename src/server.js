@@ -3,7 +3,7 @@ const db = require('../db/models');
 const { createApp } = require('./app');
 
 async function main() {
-  // Fail at startup, not on the first request, if PostgreSQL can't be reached.
+  // Connect to PostgreSQL before listening, so a wrong database setting stops the server at startup.
   await db.sequelize.authenticate();
 
   if (!config.jwtSecret) {
