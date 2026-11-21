@@ -350,3 +350,28 @@ describe('fuel type', () => {
     assert.match(unknown.body.error.details[0].message, /^Fuel type must be one of: gasoline, diesel/);
   });
 });
+
+describe('red plates', () => {
+  test('are regular plates unless marked', async () => {
+    const car = await createCar(yaris);
+    assert.equal(car.redPlate, false);
+
+    const red = await createCar({ ...city, redPlate: true });
+    assert.equal(red.redPlate, true);
+  });
+
+  test('a red plate and a regular plate can share a number, but two red plates cannot', async () => {
+    await createCar(yaris);
+    const red = await createCar({ ...yaris, redPlate: true });
+    assert.equal(red.registrationNumber, yaris.registrationNumber);
+
+    const dup = await api.post('/api/cars').send({ ...yaris, redPlate: true }).expect(409);
+    assert.equal(dup.body.error.details[0].field, 'registrationNumber');
+  });
+
+  test('a car can move from a red plate to a regular one', async () => {
+    const car = await createCar({ ...yaris, redPlate: true });
+    const res = await api.put(`/api/cars/${car.id}`).send({ ...yaris, redPlate: false }).expect(200);
+    assert.equal(res.body.redPlate, false);
+  });
+});

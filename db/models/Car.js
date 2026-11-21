@@ -15,6 +15,13 @@ module.exports = (sequelize, DataTypes) => {
         field: 'registration_number',
         allowNull: false,
       },
+      // A temporary red plate (ป้ายแดง) for a car that isn't registered yet
+      redPlate: {
+        type: DataTypes.BOOLEAN,
+        field: 'is_red_plate',
+        allowNull: false,
+        defaultValue: false,
+      },
       province: {
         type: DataTypes.STRING(50),
         allowNull: false,

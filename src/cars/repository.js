@@ -6,6 +6,7 @@ const SEARCH_COLUMNS = ['registration_number', 'province', 'brand', 'model', 'co
 // Fields the client may write. id and the timestamps are managed by Sequelize.
 const WRITABLE_FIELDS = [
   'registrationNumber',
+  'redPlate',
   'province',
   'brand',
   'model',
