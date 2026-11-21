@@ -5,6 +5,7 @@ const { createAuthRouter } = require('./auth/routes');
 const { createDepartmentRepository } = require('./departments/repository');
 const { createDepartmentsRouter } = require('./departments/routes');
 const { createCarRepository } = require('./cars/repository');
+const { createCarPhotosRouter } = require('./cars/photos');
 const { createCarsRouter } = require('./cars/routes');
 const { errorHandler, notFoundHandler } = require('./errors');
 const { createRegistrationsRouter } = require('./registrations/routes');
@@ -33,6 +34,7 @@ function createApp({ db, corsOrigin = '*', jwtSecret, jwtExpiresIn = '8h' }) {
 
   // Everything except /api/health, /api/auth/login and /api/auth/register needs a logged-in user.
   app.use('/api/auth', createAuthRouter({ userRepo, auth, jwtSecret, jwtExpiresIn }));
+  app.use('/api/cars/:id/photos', auth.authenticate, createCarPhotosRouter(db, auth));
   app.use('/api/cars', auth.authenticate, createCarsRouter(createCarRepository(db.Car), auth));
   app.use('/api/users', auth.authenticate, createUsersRouter(userRepo, auth));
   app.use('/api/registrations', auth.authenticate, createRegistrationsRouter(userRepo, auth));

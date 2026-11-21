@@ -40,7 +40,7 @@ before(async () => {
 });
 
 beforeEach(async () => {
-  await db.Car.truncate({ restartIdentity: true });
+  await db.Car.truncate({ cascade: true, restartIdentity: true });
 });
 
 after(async () => {

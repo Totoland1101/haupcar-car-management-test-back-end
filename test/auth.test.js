@@ -24,7 +24,7 @@ const ALL_PERMISSIONS = [
 let admin;
 
 beforeEach(async () => {
-  await db.Car.truncate({ restartIdentity: true });
+  await db.Car.truncate({ cascade: true, restartIdentity: true });
   await resetUsersAndRoles(db);
   admin = await loginAs(app, db, 'admin', 'Admin');
 });
