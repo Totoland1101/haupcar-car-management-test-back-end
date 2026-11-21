@@ -9,7 +9,11 @@ process.env.NODE_ENV = 'test';
 const db = require('../db/models');
 
 const app = createApp({ db, jwtSecret: JWT_SECRET });
-const somchai = { username: 'somchai', name: 'Somchai Jaidee', password: 'my-password' };
+const somchai = {
+  username: 'somchai',
+  password: 'my-password',
+  profile: { firstName: 'Somchai', lastName: 'Jaidee', email: 'somchai@example.com' },
+};
 
 let admin;
 
@@ -47,16 +51,20 @@ describe('POST /api/auth/register', () => {
     assert.match(res.body.message, /once an admin approves/);
     assert.equal('token' in res.body, false);
 
-    const user = await db.User.scope('withPassword').findOne({ where: { username: 'somchai' } });
+    const user = await db.User.scope('withPassword').findOne({
+      where: { username: 'somchai' },
+      include: [{ model: db.Profile, as: 'profile' }],
+    });
     assert.equal(user.status, 'pending');
-    assert.equal(user.roleId, null);
-    assert.match(user.passwordSalt, /^[0-9a-f]{32}$/);
-    assert.notEqual(user.passwordHash, 'my-password');
+    assert.equal(user.profile.roleId, null);
+    assert.equal(user.profile.firstName, 'Somchai');
+    assert.equal(user.profile.email, 'somchai@example.com');
+    assert.match(user.password, /^scrypt\$[0-9a-f]{32}\$[0-9a-f]{128}$/);
   });
 
   test('uses the same rules as an admin creating a user', async () => {
-    const res = await register({ username: 'a b', name: '', password: 'short' }).expect(400);
-    assert.deepEqual(res.body.error.details.map((d) => d.field).sort(), ['name', 'password', 'username']);
+    const res = await register({ username: 'a b', profile: { firstName: '' }, password: 'short' }).expect(400);
+    assert.deepEqual(res.body.error.details.map((d) => d.field).sort(), ['password', 'profile.firstName', 'username']);
   });
 
   test('rejects a username that is taken, including by another registration', async () => {
@@ -96,7 +104,7 @@ describe('logging in before approval', () => {
 describe('/api/registrations', () => {
   test('lists waiting registrations with counts', async () => {
     await register().expect(201);
-    await register({ ...somchai, username: 'malee', name: 'Malee' }).expect(201);
+    await register({ ...somchai, username: 'malee', profile: { firstName: 'Malee' } }).expect(201);
     await admin.post(`/api/registrations/${await registrationId('malee')}/reject`).expect(200);
 
     const pending = await admin.get('/api/registrations').expect(200);

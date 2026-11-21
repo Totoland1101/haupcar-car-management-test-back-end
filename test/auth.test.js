@@ -49,8 +49,8 @@ describe('POST /api/auth/login', () => {
     assert.equal(res.body.user.username, 'admin');
     assert.equal(res.body.user.role.name, 'Admin');
     assert.deepEqual(res.body.user.permissions, ALL_PERMISSIONS);
-    assert.equal('passwordHash' in res.body.user, false);
-    assert.equal('passwordSalt' in res.body.user, false);
+    assert.equal('password' in res.body.user, false);
+    assert.equal(res.body.user.profile.firstName, 'admin');
   });
 
   test('ignores letter case in the username', async () => {
@@ -91,7 +91,7 @@ describe('POST /api/auth/login', () => {
   });
 });
 
-test('passwords are stored as a salted scrypt hash, never as plain text', async () => {
+test('passwords are stored as one salted scrypt hash, not as plain text', async () => {
   await createUser(db, { username: 'twin1', password: 'same-password' });
   await createUser(db, { username: 'twin2', password: 'same-password' });
 
@@ -100,16 +100,16 @@ test('passwords are stored as a salted scrypt hash, never as plain text', async 
     order: [['username', 'ASC']],
   });
 
-  assert.match(one.passwordSalt, /^[0-9a-f]{32}$/);
-  assert.match(one.passwordHash, /^[0-9a-f]{128}$/);
-  assert.notEqual(one.passwordSalt, two.passwordSalt);
-  assert.notEqual(one.passwordHash, two.passwordHash);
-  assert.ok(await verifyPassword('same-password', one.passwordSalt, one.passwordHash));
-  assert.equal(await verifyPassword('other-password', one.passwordSalt, one.passwordHash), false);
+  // scrypt$<salt>$<hash>: the salt travels with the hash in a single column.
+  assert.match(one.password, /^scrypt\$[0-9a-f]{32}\$[0-9a-f]{128}$/);
+  assert.notEqual(one.password.split('$')[1], two.password.split('$')[1]);
+  assert.notEqual(one.password, two.password);
+  assert.ok(await verifyPassword('same-password', one.password));
+  assert.equal(await verifyPassword('other-password', one.password), false);
 
   // The default scope leaves the password columns out.
   const plain = await db.User.findOne({ where: { username: 'twin1' } });
-  assert.equal(plain.passwordHash, undefined);
+  assert.equal(plain.password, undefined);
 });
 
 describe('protected routes', () => {
@@ -186,7 +186,7 @@ describe('permissions', () => {
 describe('/api/users', () => {
   const newUser = async (overrides = {}) => ({
     username: 'somchai',
-    name: 'Somchai Jaidee',
+    profile: { firstName: 'Somchai', lastName: 'Jaidee' },
     password: 'first-password',
     roleId: await roleId('Staff'),
     ...overrides,
@@ -198,7 +198,16 @@ describe('/api/users', () => {
     assert.equal(res.body.username, 'somchai');
     assert.equal(res.body.isActive, true);
     assert.equal(res.body.role.name, 'Staff');
-    assert.equal('passwordHash' in res.body, false);
+    assert.equal('password' in res.body, false);
+    assert.equal(res.body.name, 'Somchai Jaidee');
+    assert.deepEqual(res.body.profile, {
+      firstName: 'Somchai',
+      lastName: 'Jaidee',
+      email: null,
+      phone: null,
+      jobTitle: null,
+      department: null,
+    });
     await login(app, 'somchai', 'first-password');
   });
 
@@ -226,9 +235,15 @@ describe('/api/users', () => {
   test('validates the fields', async () => {
     const res = await admin
       .post('/api/users')
-      .send({ username: 'a b', name: '', password: 'short' })
+      .send({ username: 'a b', profile: { firstName: '', email: 'not-an-email' }, password: 'short' })
       .expect(400);
-    assert.deepEqual(res.body.error.details.map((d) => d.field).sort(), ['name', 'password', 'roleId', 'username']);
+    assert.deepEqual(res.body.error.details.map((d) => d.field).sort(), [
+      'password',
+      'profile.email',
+      'profile.firstName',
+      'roleId',
+      'username',
+    ]);
   });
 
   test('rejects a role that does not exist', async () => {
@@ -240,7 +255,10 @@ describe('/api/users', () => {
     const { body: user } = await admin.post('/api/users').send(await newUser()).expect(201);
     const { password, ...withoutPassword } = await newUser();
 
-    await admin.put(`/api/users/${user.id}`).send({ ...withoutPassword, name: 'Somchai J.' }).expect(200);
+    await admin
+      .put(`/api/users/${user.id}`)
+      .send({ ...withoutPassword, profile: { firstName: 'Somchai', lastName: 'J.' } })
+      .expect(200);
     await login(app, 'somchai', 'first-password');
 
     await admin.put(`/api/users/${user.id}`).send({ ...withoutPassword, password: 'second-password' }).expect(200);
@@ -249,8 +267,8 @@ describe('/api/users', () => {
   });
 
   test('stops you from disabling, demoting or deleting your own account', async () => {
-    const me = await db.User.findOne({ where: { username: 'admin' } });
-    const base = { username: 'admin', name: 'Admin', roleId: me.roleId, isActive: true };
+    const me = await db.User.findOne({ where: { username: 'admin' }, include: [{ model: db.Profile, as: 'profile' }] });
+    const base = { username: 'admin', profile: { firstName: 'Admin' }, roleId: me.profile.roleId, isActive: true };
 
     let res = await admin.put(`/api/users/${me.id}`).send({ ...base, isActive: false }).expect(400);
     assert.equal(res.body.error.details[0].field, 'isActive');
@@ -259,7 +277,7 @@ describe('/api/users', () => {
     await admin.delete(`/api/users/${me.id}`).expect(409);
 
     // Changing your own name is fine.
-    await admin.put(`/api/users/${me.id}`).send({ ...base, name: 'Head admin' }).expect(200);
+    await admin.put(`/api/users/${me.id}`).send({ ...base, profile: { firstName: 'Head', lastName: 'admin' } }).expect(200);
   });
 
   test('deletes a user', async () => {

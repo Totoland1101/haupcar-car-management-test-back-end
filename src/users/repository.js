@@ -3,22 +3,39 @@ const { hashPassword } = require('../auth/password');
 
 class DuplicateUsernameError extends Error {}
 class UnknownRoleError extends Error {}
+class UnknownDepartmentError extends Error {}
 // Approving an approved account, or rejecting one that isn't waiting
 class RegistrationStateError extends Error {}
 
-// The password hash and salt never leave this file.
+function fullName(profile) {
+  return profile ? [profile.firstName, profile.lastName].filter(Boolean).join(' ') : null;
+}
+
+// The password never leaves this file.
 function toUser(user) {
+  const { profile } = user;
   return {
     id: user.id,
     username: user.username,
-    name: user.name,
+    // First and last name together, for display
+    name: fullName(profile),
     isActive: user.isActive,
     lastLoginAt: user.lastLoginAt,
     status: user.status,
-    // null for a registration that hasn't been approved yet
-    role: user.role ? { id: user.role.id, name: user.role.name } : null,
+    // Stored on the profile. null for a registration that hasn't been approved yet.
+    role: profile?.role ? { id: profile.role.id, name: profile.role.name } : null,
+    profile: profile
+      ? {
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          email: profile.email,
+          phone: profile.phone,
+          jobTitle: profile.jobTitle,
+          department: profile.department ? { id: profile.department.id, name: profile.department.name } : null,
+        }
+      : null,
     reviewedAt: user.reviewedAt,
-    reviewedBy: user.reviewedBy ? { id: user.reviewedBy.id, name: user.reviewedBy.name } : null,
+    reviewedBy: user.reviewedBy ? { id: user.reviewedBy.id, name: fullName(user.reviewedBy.profile) } : null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -27,7 +44,7 @@ function toUser(user) {
 function toAuthUser(user) {
   return {
     ...toUser(user),
-    permissions: (user.role?.permissions ?? []).map((permission) => permission.code).sort(),
+    permissions: (user.profile?.role?.permissions ?? []).map((permission) => permission.code).sort(),
   };
 }
 
@@ -38,17 +55,43 @@ function rethrowDuplicate(err) {
   throw err;
 }
 
-function createUserRepository({ User, Role, Permission }) {
-  const withRole = { model: Role, as: 'role', attributes: ['id', 'name'] };
-  const withReviewer = { model: User, as: 'reviewedBy', attributes: ['id', 'name'] };
-  const withRoleAndPermissions = {
-    ...withRole,
-    include: [{ model: Permission, as: 'permissions', attributes: ['code'], through: { attributes: [] } }],
+// Profile columns a request may set. The role is handled separately because only admins set it.
+function profileFields({ firstName, lastName, email, phone, jobTitle, departmentId }) {
+  return { firstName, lastName, email, phone, jobTitle, departmentId };
+}
+
+function createUserRepository({ User, Profile, Role, Department, Permission, sequelize }) {
+  const roleInclude = { model: Role, as: 'role', attributes: ['id', 'name'] };
+  const withProfile = {
+    model: Profile,
+    as: 'profile',
+    include: [roleInclude, { model: Department, as: 'department', attributes: ['id', 'name'] }],
+  };
+  const withProfileAndPermissions = {
+    ...withProfile,
+    include: [
+      {
+        ...roleInclude,
+        include: [{ model: Permission, as: 'permissions', attributes: ['code'], through: { attributes: [] } }],
+      },
+      { model: Department, as: 'department', attributes: ['id', 'name'] },
+    ],
+  };
+  const withReviewer = {
+    model: User,
+    as: 'reviewedBy',
+    attributes: ['id'],
+    include: [{ model: Profile, as: 'profile', attributes: ['firstName', 'lastName'] }],
   };
 
   async function findById(id) {
-    const user = await User.findByPk(id, { include: [withRole, withReviewer] });
+    const user = await User.findByPk(id, { include: [withProfile, withReviewer] });
     return user ? toUser(user) : null;
+  }
+
+  async function findAuthById(id) {
+    const user = await User.findByPk(id, { include: [withProfileAndPermissions] });
+    return user ? toAuthUser(user) : null;
   }
 
   async function assertRoleExists(roleId) {
@@ -56,32 +99,47 @@ function createUserRepository({ User, Role, Permission }) {
     if (!role) throw new UnknownRoleError('This role does not exist');
   }
 
+  async function assertDepartmentExists(departmentId) {
+    if (!departmentId) return;
+    const department = await Department.findByPk(departmentId, { attributes: ['id'] });
+    if (!department) throw new UnknownDepartmentError('This department does not exist');
+  }
+
+  // Creates the account and its profile together, so neither exists without the other.
+  async function createWithProfile(account, profile) {
+    try {
+      const id = await sequelize.transaction(async (transaction) => {
+        const user = await User.create(account, { transaction });
+        await Profile.create({ ...profile, userId: user.id }, { transaction });
+        return user.id;
+      });
+      return findById(id);
+    } catch (err) {
+      rethrowDuplicate(err);
+    }
+  }
+
   return {
     findById,
+    findAuthById,
 
     // Approved accounts. Registrations are listed by listRegistrations.
     async list() {
       const users = await User.findAll({
         where: { status: 'approved' },
-        include: [withRole, withReviewer],
+        include: [withProfile, withReviewer],
         order: [['username', 'ASC']],
       });
       return users.map(toUser);
     },
 
-    // The logged-in user, with the permission codes of their role.
-    async findAuthById(id) {
-      const user = await User.findByPk(id, { include: [withRoleAndPermissions] });
-      return user ? toAuthUser(user) : null;
-    },
-
     async findForLogin(username) {
       const user = await User.scope('withPassword').findOne({
         where: { username },
-        include: [withRoleAndPermissions],
+        include: [withProfileAndPermissions],
       });
       if (!user) return null;
-      return { user: toAuthUser(user), passwordHash: user.passwordHash, passwordSalt: user.passwordSalt };
+      return { user: toAuthUser(user), password: user.password };
     },
 
     async recordLogin(id) {
@@ -90,45 +148,67 @@ function createUserRepository({ User, Role, Permission }) {
     },
 
     // An account made by an admin is approved straight away.
-    async create({ password, ...input }, { reviewerId }) {
-      await assertRoleExists(input.roleId);
-      const { hash, salt } = await hashPassword(password);
-      try {
-        const user = await User.create({
-          ...input,
-          passwordHash: hash,
-          passwordSalt: salt,
+    async create({ password, roleId, profile, ...account }, { reviewerId }) {
+      await assertRoleExists(roleId);
+      await assertDepartmentExists(profile.departmentId);
+      return createWithProfile(
+        {
+          ...account,
+          password: await hashPassword(password),
           status: 'approved',
           reviewedAt: new Date(),
           reviewedById: reviewerId,
-        });
-        return findById(user.id);
-      } catch (err) {
-        rethrowDuplicate(err);
-      }
+        },
+        { ...profileFields(profile), roleId }
+      );
     },
 
     // Someone signing up on /register. They can't log in until the account is approved.
-    async register({ password, ...input }) {
-      const { hash, salt } = await hashPassword(password);
+    async register({ password, username, profile }) {
+      return createWithProfile(
+        { username, password: await hashPassword(password), status: 'pending' },
+        { ...profileFields(profile), roleId: null }
+      );
+    },
+
+    // Replaces the account and profile details. The password changes only when a new one is given.
+    async update(id, { password, roleId, profile, ...account }) {
+      const user = await User.findByPk(id, { include: [{ model: Profile, as: 'profile' }] });
+      if (!user) return null;
+      await assertRoleExists(roleId);
+      await assertDepartmentExists(profile.departmentId);
+
+      const changes = { username: account.username, isActive: account.isActive };
+      if (password) changes.password = await hashPassword(password);
+
       try {
-        const user = await User.create({
-          ...input,
-          passwordHash: hash,
-          passwordSalt: salt,
-          status: 'pending',
-          roleId: null,
+        await sequelize.transaction(async (transaction) => {
+          await user.update(changes, { transaction });
+          await user.profile.update({ ...profileFields(profile), roleId }, { transaction });
         });
-        return findById(user.id);
       } catch (err) {
         rethrowDuplicate(err);
       }
+      return findById(id);
+    },
+
+    // A user editing their own details. The role stays as it is.
+    async updateProfile(userId, profile) {
+      await assertDepartmentExists(profile.departmentId);
+      await Profile.update(profileFields(profile), { where: { userId } });
+      return findAuthById(userId);
+    },
+
+    async remove(id) {
+      // The profile goes with it (ON DELETE CASCADE).
+      const deleted = await User.destroy({ where: { id } });
+      return deleted > 0;
     },
 
     async listRegistrations(status) {
       const users = await User.findAll({
         where: { status },
-        include: [withReviewer],
+        include: [withProfile, withReviewer],
         // Oldest first, so the people who have waited longest are at the top
         order: [['createdAt', 'ASC']],
       });
@@ -144,12 +224,18 @@ function createUserRepository({ User, Role, Permission }) {
 
     // A rejected registration can still be approved later, if the admin changes their mind.
     async approve(id, { roleId, reviewerId }) {
-      const user = await User.findByPk(id);
+      const user = await User.findByPk(id, { include: [{ model: Profile, as: 'profile' }] });
       if (!user) return null;
       if (user.status === 'approved') throw new RegistrationStateError('This account is already approved');
       await assertRoleExists(roleId);
 
-      await user.update({ status: 'approved', roleId, isActive: true, reviewedAt: new Date(), reviewedById: reviewerId });
+      await sequelize.transaction(async (transaction) => {
+        await user.update(
+          { status: 'approved', isActive: true, reviewedAt: new Date(), reviewedById: reviewerId },
+          { transaction }
+        );
+        await user.profile.update({ roleId }, { transaction });
+      });
       return findById(id);
     },
 
@@ -163,38 +249,13 @@ function createUserRepository({ User, Role, Permission }) {
       await user.update({ status: 'rejected', reviewedAt: new Date(), reviewedById: reviewerId });
       return findById(id);
     },
-
-    // Replaces the account details. The password changes only when a new one is given.
-    async update(id, { password, ...input }) {
-      const user = await User.findByPk(id);
-      if (!user) return null;
-      await assertRoleExists(input.roleId);
-
-      const changes = {
-        username: input.username,
-        name: input.name,
-        roleId: input.roleId,
-        isActive: input.isActive,
-      };
-      if (password) {
-        const { hash, salt } = await hashPassword(password);
-        changes.passwordHash = hash;
-        changes.passwordSalt = salt;
-      }
-
-      try {
-        await user.update(changes);
-      } catch (err) {
-        rethrowDuplicate(err);
-      }
-      return findById(id);
-    },
-
-    async remove(id) {
-      const deleted = await User.destroy({ where: { id } });
-      return deleted > 0;
-    },
   };
 }
 
-module.exports = { DuplicateUsernameError, RegistrationStateError, UnknownRoleError, createUserRepository };
+module.exports = {
+  DuplicateUsernameError,
+  RegistrationStateError,
+  UnknownDepartmentError,
+  UnknownRoleError,
+  createUserRepository,
+};

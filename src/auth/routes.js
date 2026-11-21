@@ -1,8 +1,8 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const { HttpError } = require('../errors');
-const { userCreateSchema } = require('../users/schema');
-const { DuplicateUsernameError } = require('../users/repository');
+const { profileSchema, registerSchema } = require('../users/schema');
+const { DuplicateUsernameError, UnknownDepartmentError } = require('../users/repository');
 const { validate } = require('../validation');
 const { verifyAgainstDummy, verifyPassword } = require('./password');
 const { signToken } = require('./token');
@@ -11,9 +11,6 @@ const loginSchema = z.object({
   username: z.string({ error: 'Username is required' }).trim().toLowerCase().min(1, 'Username is required'),
   password: z.string({ error: 'Password is required' }).min(1, 'Password is required'),
 });
-
-// Same rules as an admin creating an account, minus the role and active flag.
-const registerSchema = userCreateSchema.pick({ username: true, name: true, password: true });
 
 // Only checked after the password matched, so these messages don't help anyone guess.
 const LOGIN_BLOCKED = {
@@ -29,7 +26,7 @@ function createAuthRouter({ userRepo, auth, jwtSecret, jwtExpiresIn }) {
     const found = await userRepo.findForLogin(username);
 
     const passwordOk = found
-      ? await verifyPassword(password, found.passwordSalt, found.passwordHash)
+      ? await verifyPassword(password, found.password)
       : await verifyAgainstDummy(password);
     // The same message for both cases, so the response doesn't reveal which usernames exist.
     if (!passwordOk) throw new HttpError(401, 'Incorrect username or password');
@@ -57,6 +54,19 @@ function createAuthRouter({ userRepo, auth, jwtSecret, jwtExpiresIn }) {
 
   router.get('/me', auth.authenticate, (req, res) => {
     res.json(req.user);
+  });
+
+  // Anyone can edit their own details. The role and permissions aren't part of this.
+  router.put('/me/profile', auth.authenticate, async (req, res) => {
+    const input = validate(profileSchema, req.body ?? {});
+    try {
+      res.json(await userRepo.updateProfile(req.user.id, input));
+    } catch (err) {
+      if (err instanceof UnknownDepartmentError) {
+        throw new HttpError(400, err.message, [{ field: 'departmentId', message: err.message }]);
+      }
+      throw err;
+    }
   });
 
   return router;

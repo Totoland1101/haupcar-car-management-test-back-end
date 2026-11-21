@@ -5,16 +5,19 @@ const { hashPassword } = require('../src/auth/password');
 const JWT_SECRET = 'test-secret';
 const DEFAULT_ROLES = ['Admin', 'Staff', 'Viewer'];
 
-// Back to what the migrations create: the default roles and no users.
+// Back to what the migrations create: the default roles, no users and no departments.
 async function resetUsersAndRoles(db) {
-  await db.User.truncate({ restartIdentity: true });
+  // CASCADE empties haup_profiles too.
+  await db.User.truncate({ cascade: true, restartIdentity: true });
+  await db.Department.truncate({ cascade: true, restartIdentity: true });
   await db.Role.destroy({ where: { name: { [Op.notIn]: DEFAULT_ROLES } } });
 }
 
 async function createUser(db, { username, password = 'password123', role = 'Admin', isActive = true }) {
   const { id: roleId } = await db.Role.findOne({ where: { name: role } });
-  const { hash, salt } = await hashPassword(password);
-  return db.User.create({ username, name: username, roleId, isActive, passwordHash: hash, passwordSalt: salt });
+  const user = await db.User.create({ username, password: await hashPassword(password), isActive });
+  await db.Profile.create({ userId: user.id, firstName: username, roleId });
+  return user;
 }
 
 async function login(app, username, password = 'password123') {

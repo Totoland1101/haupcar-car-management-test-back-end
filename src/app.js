@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const { createAuth } = require('./auth/middleware');
 const { createAuthRouter } = require('./auth/routes');
+const { createDepartmentRepository } = require('./departments/repository');
+const { createDepartmentsRouter } = require('./departments/routes');
 const { createCarRepository } = require('./cars/repository');
 const { createCarsRouter } = require('./cars/routes');
 const { errorHandler, notFoundHandler } = require('./errors');
@@ -34,6 +36,7 @@ function createApp({ db, corsOrigin = '*', jwtSecret, jwtExpiresIn = '8h' }) {
   app.use('/api/cars', auth.authenticate, createCarsRouter(createCarRepository(db.Car), auth));
   app.use('/api/users', auth.authenticate, createUsersRouter(userRepo, auth));
   app.use('/api/registrations', auth.authenticate, createRegistrationsRouter(userRepo, auth));
+  app.use('/api/departments', auth.authenticate, createDepartmentsRouter(createDepartmentRepository(db), auth));
   app.use('/api/roles', auth.authenticate, createRolesRouter(roleRepo, auth));
   app.use('/api/permissions', auth.authenticate, createPermissionsRouter(roleRepo, auth));
   app.use(notFoundHandler);

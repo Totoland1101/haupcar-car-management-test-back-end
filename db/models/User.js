@@ -1,3 +1,4 @@
+// A login account. Who the person is lives in their Profile.
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define(
     'User',
@@ -13,25 +14,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         unique: true,
       },
-      name: {
-        type: DataTypes.STRING(100),
+      // scrypt$<salt>$<hash>, written by src/auth/password.js
+      password: {
+        type: DataTypes.STRING(200),
         allowNull: false,
-      },
-      passwordHash: {
-        type: DataTypes.STRING(128),
-        field: 'password_hash',
-        allowNull: false,
-      },
-      passwordSalt: {
-        type: DataTypes.STRING(32),
-        field: 'password_salt',
-        allowNull: false,
-      },
-      // Null while a registration waits for approval
-      roleId: {
-        type: DataTypes.INTEGER,
-        field: 'role_id',
-        allowNull: true,
       },
       isActive: {
         type: DataTypes.BOOLEAN,
@@ -70,12 +56,12 @@ module.exports = (sequelize, DataTypes) => {
       },
     },
     {
-      // Created by db/migrations/20261121000000-create-haup-users-roles-permissions.js,
-      // status and reviewed_* added by 20261121000200-add-haup-users-registration-status.js
+      // Created by db/migrations/20261121000000-create-haup-users-roles-permissions.js and changed
+      // by 20261121000200 (registration status) and 20261121000400 (profiles, one password column)
       tableName: 'haup_users',
-      // Queries leave out the password columns unless they ask for User.scope('withPassword').
+      // Queries leave out the password unless they ask for User.scope('withPassword').
       defaultScope: {
-        attributes: { exclude: ['passwordHash', 'passwordSalt'] },
+        attributes: { exclude: ['password'] },
       },
       scopes: {
         withPassword: {},
@@ -84,7 +70,7 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   User.associate = (models) => {
-    User.belongsTo(models.Role, { foreignKey: 'roleId', as: 'role' });
+    User.hasOne(models.Profile, { foreignKey: 'userId', as: 'profile' });
     User.belongsTo(models.User, { foreignKey: 'reviewedById', as: 'reviewedBy' });
   };
 

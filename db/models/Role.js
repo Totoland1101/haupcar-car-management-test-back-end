@@ -45,7 +45,7 @@ module.exports = (sequelize, DataTypes) => {
       otherKey: 'permissionId',
       as: 'permissions',
     });
-    Role.hasMany(models.User, { foreignKey: 'roleId', as: 'users' });
+    Role.hasMany(models.Profile, { foreignKey: 'roleId', as: 'profiles' });
   };
 
   return Role;

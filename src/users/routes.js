@@ -2,7 +2,7 @@ const { Router } = require('express');
 const { PERMISSIONS } = require('../auth/permissions');
 const { HttpError } = require('../errors');
 const { parseId, validate } = require('../validation');
-const { DuplicateUsernameError, UnknownRoleError } = require('./repository');
+const { DuplicateUsernameError, UnknownDepartmentError, UnknownRoleError } = require('./repository');
 const { userCreateSchema, userUpdateSchema } = require('./schema');
 
 async function saveOrConflict(save) {
@@ -14,6 +14,9 @@ async function saveOrConflict(save) {
     }
     if (err instanceof UnknownRoleError) {
       throw new HttpError(400, err.message, [{ field: 'roleId', message: err.message }]);
+    }
+    if (err instanceof UnknownDepartmentError) {
+      throw new HttpError(400, err.message, [{ field: 'profile.departmentId', message: err.message }]);
     }
     throw err;
   }

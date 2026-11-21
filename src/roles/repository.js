@@ -15,7 +15,7 @@ class UnknownPermissionError extends Error {
   }
 }
 
-function createRoleRepository({ Role, Permission, User, sequelize }) {
+function createRoleRepository({ Role, Permission, Profile, sequelize }) {
   const withPermissions = {
     model: Permission,
     as: 'permissions',
@@ -24,7 +24,8 @@ function createRoleRepository({ Role, Permission, User, sequelize }) {
   };
 
   async function userCounts() {
-    const rows = await User.count({ group: ['roleId'] });
+    // A user's role is stored on their profile.
+    const rows = await Profile.count({ group: ['roleId'] });
     return new Map(rows.map((row) => [row.roleId, row.count]));
   }
 
@@ -110,7 +111,7 @@ function createRoleRepository({ Role, Permission, User, sequelize }) {
       if (!role) return false;
       if (role.isSystem) throw new SystemRoleError('System roles cannot be deleted');
 
-      const userCount = await User.count({ where: { roleId: id } });
+      const userCount = await Profile.count({ where: { roleId: id } });
       if (userCount > 0) throw new RoleInUseError(userCount);
 
       try {
@@ -118,7 +119,7 @@ function createRoleRepository({ Role, Permission, User, sequelize }) {
       } catch (err) {
         // A user was given this role between the count and the delete.
         if (err instanceof ForeignKeyConstraintError) {
-          throw new RoleInUseError(await User.count({ where: { roleId: id } }));
+          throw new RoleInUseError(await Profile.count({ where: { roleId: id } }));
         }
         throw err;
       }
