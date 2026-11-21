@@ -1,25 +1,9 @@
 const { Router } = require('express');
+const { PERMISSIONS } = require('../auth/permissions');
 const { HttpError } = require('../errors');
+const { parseId, validate } = require('../validation');
 const { DuplicatePlateError } = require('./repository');
-const { carInputSchema, idSchema, listQuerySchema } = require('./schema');
-
-function validate(schema, input, message = 'Validation failed') {
-  const result = schema.safeParse(input);
-  if (!result.success) {
-    const details = result.error.issues.map((issue) => ({
-      field: issue.path.join('.'),
-      message: issue.message,
-    }));
-    throw new HttpError(400, message, details);
-  }
-  return result.data;
-}
-
-function parseId(raw) {
-  const result = idSchema.safeParse(raw);
-  if (!result.success) throw new HttpError(400, 'Car id must be a positive whole number');
-  return result.data;
-}
+const { carInputSchema, listQuerySchema } = require('./schema');
 
 async function saveOrConflict(save) {
   try {
@@ -35,10 +19,10 @@ async function saveOrConflict(save) {
 }
 
 // Express 5 passes errors from async handlers to the error middleware, so no try/catch is needed here.
-function createCarsRouter(repo) {
+function createCarsRouter(repo, { can }) {
   const router = Router();
 
-  router.get('/', async (req, res) => {
+  router.get('/', can(PERMISSIONS.CAR_VIEW), async (req, res) => {
     const query = validate(listQuerySchema, req.query, 'Invalid query parameters');
     const { items, total } = await repo.list(query);
     res.json({
@@ -47,32 +31,32 @@ function createCarsRouter(repo) {
     });
   });
 
-  router.get('/summary', async (req, res) => {
+  router.get('/summary', can(PERMISSIONS.CAR_VIEW), async (req, res) => {
     res.json(await repo.summary());
   });
 
-  router.get('/:id', async (req, res) => {
-    const car = await repo.findById(parseId(req.params.id));
+  router.get('/:id', can(PERMISSIONS.CAR_VIEW), async (req, res) => {
+    const car = await repo.findById(parseId(req.params.id, 'Car'));
     if (!car) throw new HttpError(404, 'Car not found');
     res.json(car);
   });
 
-  router.post('/', async (req, res) => {
+  router.post('/', can(PERMISSIONS.CAR_CREATE), async (req, res) => {
     const input = validate(carInputSchema, req.body ?? {});
     const car = await saveOrConflict(() => repo.create(input));
     res.status(201).location(`${req.baseUrl}/${car.id}`).json(car);
   });
 
-  router.put('/:id', async (req, res) => {
-    const id = parseId(req.params.id);
+  router.put('/:id', can(PERMISSIONS.CAR_UPDATE), async (req, res) => {
+    const id = parseId(req.params.id, 'Car');
     const input = validate(carInputSchema, req.body ?? {});
     const car = await saveOrConflict(() => repo.update(id, input));
     if (!car) throw new HttpError(404, 'Car not found');
     res.json(car);
   });
 
-  router.delete('/:id', async (req, res) => {
-    const removed = await repo.remove(parseId(req.params.id));
+  router.delete('/:id', can(PERMISSIONS.CAR_DELETE), async (req, res) => {
+    const removed = await repo.remove(parseId(req.params.id, 'Car'));
     if (!removed) throw new HttpError(404, 'Car not found');
     res.status(204).end();
   });

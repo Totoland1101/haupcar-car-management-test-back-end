@@ -23,6 +23,12 @@ module.exports = {
   port: Number(process.env.PORT) || 4000,
   corsOrigin: process.env.CORS_ORIGIN || '*',
   dbLogging: process.env.DB_LOGGING === 'true',
+  // Signs login tokens. Production has to set its own. The fallback only exists so local
+  // development works without a .env file.
+  jwtSecret:
+    process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? undefined : 'dev-only-secret-change-me'),
+  // How long a login lasts, in jsonwebtoken's format: 8h, 30m, 7d
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
 
   development: {
     ...database,

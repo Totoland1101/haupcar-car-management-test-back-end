@@ -6,7 +6,16 @@ async function main() {
   // Fail at startup, not on the first request, if PostgreSQL can't be reached.
   await db.sequelize.authenticate();
 
-  const app = createApp({ db, corsOrigin: config.corsOrigin });
+  if (!config.jwtSecret) {
+    throw new Error('Set JWT_SECRET in backend/.env. Login tokens are signed with it.');
+  }
+
+  const app = createApp({
+    db,
+    corsOrigin: config.corsOrigin,
+    jwtSecret: config.jwtSecret,
+    jwtExpiresIn: config.jwtExpiresIn,
+  });
 
   const server = app.listen(config.port, () => {
     const { host, port, database } = db.sequelize.config;

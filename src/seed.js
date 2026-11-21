@@ -1,7 +1,17 @@
-// Fills the database with sample cars so the UI has something to show.
-// Usage: npm run seed            (only when the table is empty)
-//        npm run seed -- --reset (delete everything first)
+// Fills the database with sample cars so the UI has something to show, and adds one demo
+// login per default role.
+// Usage: npm run seed            (cars only when the table is empty)
+//        npm run seed -- --reset (delete every car first)
+// Demo users are added when their username is missing. Existing users are never changed.
 const db = require('../db/models');
+const { hashPassword } = require('./auth/password');
+
+// For local development only. Change these passwords on any shared server.
+const demoUsers = [
+  { username: 'admin', name: 'Admin', password: 'admin1234', role: 'Admin' },
+  { username: 'staff', name: 'Staff member', password: 'staff1234', role: 'Staff' },
+  { username: 'viewer', name: 'Viewer', password: 'viewer1234', role: 'Viewer' },
+];
 
 const sampleCars = [
   { registrationNumber: '1กก 1234', province: 'กรุงเทพมหานคร', brand: 'Toyota', model: 'Yaris Ativ', year: 2023, color: 'White', mileage: 15200, status: 'available', notes: 'Spare key is in the office key cabinet.' },
@@ -18,23 +28,43 @@ const sampleCars = [
   { registrationNumber: '3กล 7799', province: 'ระยอง', brand: 'Isuzu', model: 'D-Max', year: 2023, color: 'White', mileage: 27300, status: 'in_use' },
 ];
 
-async function main() {
-  const reset = process.argv.includes('--reset');
+async function seedCars(reset) {
   const { sequelize, Car } = db;
-
   const count = await Car.count();
 
   if (count > 0 && !reset) {
     console.log(`Database already has ${count} cars. Run "npm run seed -- --reset" to replace them.`);
-  } else {
-    await sequelize.transaction(async (transaction) => {
-      if (reset) await Car.destroy({ truncate: true, restartIdentity: true, transaction });
-      await Car.bulkCreate(sampleCars, { validate: true, transaction });
-    });
-    console.log(`Added ${sampleCars.length} sample cars to ${sequelize.getDatabaseName()}`);
+    return;
   }
 
-  await sequelize.close();
+  await sequelize.transaction(async (transaction) => {
+    if (reset) await Car.destroy({ truncate: true, restartIdentity: true, transaction });
+    await Car.bulkCreate(sampleCars, { validate: true, transaction });
+  });
+  console.log(`Added ${sampleCars.length} sample cars to ${sequelize.getDatabaseName()}`);
+}
+
+async function seedUsers() {
+  const { Role, User } = db;
+  const roles = await Role.findAll();
+  const roleId = Object.fromEntries(roles.map((role) => [role.name, role.id]));
+
+  for (const { password, role, ...user } of demoUsers) {
+    if (!roleId[role]) {
+      throw new Error(`Role "${role}" is missing. Run "npm run migration up" first.`);
+    }
+    if (await User.findOne({ where: { username: user.username } })) continue;
+
+    const { hash, salt } = await hashPassword(password);
+    await User.create({ ...user, roleId: roleId[role], passwordHash: hash, passwordSalt: salt });
+    console.log(`Added user ${user.username} (${role}), password: ${password}`);
+  }
+}
+
+async function main() {
+  await seedCars(process.argv.includes('--reset'));
+  await seedUsers();
+  await db.sequelize.close();
 }
 
 main().catch((err) => {

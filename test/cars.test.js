@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
-const { after, beforeEach, describe, test } = require('node:test');
-const request = require('supertest');
+const { after, before, beforeEach, describe, test } = require('node:test');
 const { createApp } = require('../src/app');
+const { JWT_SECRET, loginAs, resetUsersAndRoles } = require('./helpers');
 
 // The tests empty haup_cars, so make sure they never touch the development database.
 // npm test runs the migrations on the test database first.
@@ -28,7 +28,16 @@ const city = {
   status: 'maintenance',
 };
 
-const app = createApp({ db });
+const app = createApp({ db, jwtSecret: JWT_SECRET });
+
+// The car routes need a logged-in user. An admin has every car permission.
+// test/auth.test.js covers what happens with fewer permissions.
+let api;
+
+before(async () => {
+  await resetUsersAndRoles(db);
+  api = await loginAs(app, db, 'admin', 'Admin');
+});
 
 beforeEach(async () => {
   await db.Car.truncate({ restartIdentity: true });
@@ -39,13 +48,13 @@ after(async () => {
 });
 
 async function createCar(car) {
-  const res = await request(app).post('/api/cars').send(car).expect(201);
+  const res = await api.post('/api/cars').send(car).expect(201);
   return res.body;
 }
 
 describe('POST /api/cars', () => {
   test('creates a car and returns it with an id and timestamps', async () => {
-    const res = await request(app).post('/api/cars').send(yaris).expect(201);
+    const res = await api.post('/api/cars').send(yaris).expect(201);
 
     assert.equal(typeof res.body.id, 'number');
     assert.equal(res.headers.location, `/api/cars/${res.body.id}`);
@@ -72,7 +81,7 @@ describe('POST /api/cars', () => {
   });
 
   test('rejects missing and invalid fields with a 400 and per-field details', async () => {
-    const res = await request(app)
+    const res = await api
       .post('/api/cars')
       .send({ brand: '', year: 'last year', status: 'flying' })
       .expect(400);
@@ -83,7 +92,7 @@ describe('POST /api/cars', () => {
 
   test('rejects a plate that already exists in the same province', async () => {
     await createCar(yaris);
-    const res = await request(app)
+    const res = await api
       .post('/api/cars')
       .send({ ...city, registrationNumber: yaris.registrationNumber, province: yaris.province })
       .expect(409);
@@ -97,7 +106,7 @@ describe('POST /api/cars', () => {
   });
 
   test('returns 400 for a body that is not valid JSON', async () => {
-    await request(app)
+    await api
       .post('/api/cars')
       .set('Content-Type', 'application/json')
       .send('{"brand":')
@@ -113,37 +122,37 @@ describe('GET /api/cars', () => {
   });
 
   test('lists every car with pagination info', async () => {
-    const res = await request(app).get('/api/cars').expect(200);
+    const res = await api.get('/api/cars').expect(200);
 
     assert.equal(res.body.data.length, 3);
     assert.deepEqual(res.body.meta, { page: 1, pageSize: 10, total: 3 });
   });
 
   test('searches across plate, brand, model and notes', async () => {
-    const byBrand = await request(app).get('/api/cars').query({ search: 'honda' }).expect(200);
+    const byBrand = await api.get('/api/cars').query({ search: 'honda' }).expect(200);
     assert.deepEqual(byBrand.body.data.map((c) => c.model), ['City']);
 
-    const byNotes = await request(app).get('/api/cars').query({ search: 'spare key' }).expect(200);
+    const byNotes = await api.get('/api/cars').query({ search: 'spare key' }).expect(200);
     assert.deepEqual(byNotes.body.data.map((c) => c.model), ['Camry', 'Yaris Ativ']);
   });
 
   test('treats % and _ in the search text literally', async () => {
-    const res = await request(app).get('/api/cars').query({ search: '%' }).expect(200);
+    const res = await api.get('/api/cars').query({ search: '%' }).expect(200);
     assert.equal(res.body.meta.total, 0);
   });
 
   test('filters by status and brand', async () => {
-    const res = await request(app).get('/api/cars').query({ status: 'in_use', brand: 'toyota' }).expect(200);
+    const res = await api.get('/api/cars').query({ status: 'in_use', brand: 'toyota' }).expect(200);
     assert.deepEqual(res.body.data.map((c) => c.model), ['Camry']);
   });
 
   test('sorts by the requested field', async () => {
-    const res = await request(app).get('/api/cars').query({ sortBy: 'model', order: 'asc' }).expect(200);
+    const res = await api.get('/api/cars').query({ sortBy: 'model', order: 'asc' }).expect(200);
     assert.deepEqual(res.body.data.map((c) => c.model), ['Camry', 'City', 'Yaris Ativ']);
   });
 
   test('pages through results', async () => {
-    const res = await request(app)
+    const res = await api
       .get('/api/cars')
       .query({ sortBy: 'model', order: 'asc', page: 2, pageSize: 2 })
       .expect(200);
@@ -153,7 +162,7 @@ describe('GET /api/cars', () => {
   });
 
   test('rejects an unknown sort field', async () => {
-    await request(app).get('/api/cars').query({ sortBy: 'id; DROP TABLE cars' }).expect(400);
+    await api.get('/api/cars').query({ sortBy: 'id; DROP TABLE cars' }).expect(400);
   });
 });
 
@@ -162,7 +171,7 @@ describe('GET /api/cars/summary', () => {
     await createCar(yaris);
     await createCar(city);
 
-    const res = await request(app).get('/api/cars/summary').expect(200);
+    const res = await api.get('/api/cars/summary').expect(200);
 
     assert.equal(res.body.total, 2);
     assert.deepEqual(res.body.byStatus, { available: 1, in_use: 0, maintenance: 1, inactive: 0 });
@@ -173,16 +182,16 @@ describe('GET /api/cars/summary', () => {
 describe('GET /api/cars/:id', () => {
   test('returns one car', async () => {
     const created = await createCar(yaris);
-    const res = await request(app).get(`/api/cars/${created.id}`).expect(200);
+    const res = await api.get(`/api/cars/${created.id}`).expect(200);
     assert.deepEqual(res.body, created);
   });
 
   test('returns 404 for a car that does not exist', async () => {
-    await request(app).get('/api/cars/999').expect(404);
+    await api.get('/api/cars/999').expect(404);
   });
 
   test('returns 400 for an id that is not a number', async () => {
-    await request(app).get('/api/cars/abc').expect(400);
+    await api.get('/api/cars/abc').expect(400);
   });
 });
 
@@ -191,7 +200,7 @@ describe('PUT /api/cars/:id', () => {
     const created = await createCar(yaris);
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    const res = await request(app)
+    const res = await api
       .put(`/api/cars/${created.id}`)
       .send({ ...yaris, status: 'maintenance', notes: null, mileage: 16000 })
       .expect(200);
@@ -205,21 +214,21 @@ describe('PUT /api/cars/:id', () => {
 
   test('validates the body the same way as create', async () => {
     const created = await createCar(yaris);
-    await request(app).put(`/api/cars/${created.id}`).send({ ...yaris, brand: '' }).expect(400);
+    await api.put(`/api/cars/${created.id}`).send({ ...yaris, brand: '' }).expect(400);
   });
 
   test('returns 409 when moving to a plate another car already uses', async () => {
     await createCar(yaris);
     const other = await createCar(city);
 
-    await request(app)
+    await api
       .put(`/api/cars/${other.id}`)
       .send({ ...city, registrationNumber: yaris.registrationNumber, province: yaris.province })
       .expect(409);
   });
 
   test('returns 404 for a car that does not exist', async () => {
-    await request(app).put('/api/cars/999').send(yaris).expect(404);
+    await api.put('/api/cars/999').send(yaris).expect(404);
   });
 });
 
@@ -227,17 +236,17 @@ describe('DELETE /api/cars/:id', () => {
   test('deletes the car', async () => {
     const created = await createCar(yaris);
 
-    await request(app).delete(`/api/cars/${created.id}`).expect(204);
-    await request(app).get(`/api/cars/${created.id}`).expect(404);
+    await api.delete(`/api/cars/${created.id}`).expect(204);
+    await api.get(`/api/cars/${created.id}`).expect(404);
   });
 
   test('returns 404 for a car that does not exist', async () => {
-    await request(app).delete('/api/cars/999').expect(404);
+    await api.delete('/api/cars/999').expect(404);
   });
 });
 
 test('unknown API routes return a JSON 404', async () => {
-  const res = await request(app).get('/api/trucks').expect(404);
+  const res = await api.get('/api/trucks').expect(404);
   assert.match(res.body.error.message, /not found/);
 });
 

@@ -66,6 +66,4 @@ const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(10),
 });
 
-const idSchema = z.coerce.number().int().positive();
-
-module.exports = { CAR_STATUSES, SORTABLE_FIELDS, carInputSchema, listQuerySchema, idSchema };
+module.exports = { CAR_STATUSES, SORTABLE_FIELDS, carInputSchema, listQuerySchema };
