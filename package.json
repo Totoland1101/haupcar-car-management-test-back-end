@@ -6,9 +6,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "migration": "node scripts/migration.js",
-    "seed": "node src/seed.js",
-    "test": "NODE_ENV=test node scripts/migration.js up && node --test --test-concurrency=1"
+    "migration-up": "sequelize-cli db:migrate",
+    "migration-down": "sequelize-cli db:migrate:undo",
+    "migration-status": "sequelize-cli db:migrate:status",
+    "migration-generate": "sequelize-cli migration:generate --name",
+    "test": "NODE_ENV=test sequelize-cli db:migrate && node --test --test-concurrency=1"
   },
   "dependencies": {
     "cors": "^2.8.6",
