@@ -2,6 +2,7 @@
   "name": "car-management-api",
   "version": "1.0.0",
   "private": true,
+  "description": "REST API for haupcar-management",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -11,6 +12,9 @@
     "migration-status": "sequelize-cli db:migrate:status",
     "migration-generate": "sequelize-cli migration:generate --name",
     "test": "NODE_ENV=test sequelize-cli db:migrate && node --test --test-concurrency=1"
+  },
+  "engines": {
+    "node": ">=20.17"
   },
   "dependencies": {
     "cors": "^2.8.6",
@@ -24,5 +28,14 @@
   "devDependencies": {
     "sequelize-cli": "^6.6.5",
     "supertest": "^7.3.2"
+  },
+  "overrides": {
+    "sequelize": {
+      "uuid": "^11.1.1"
+    },
+    "js-beautify": {
+      "glob": "^14.0.6",
+      "editorconfig": "^4.0.1"
+    }
   }
 }

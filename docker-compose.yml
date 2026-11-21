@@ -1,4 +1,7 @@
 # Local PostgreSQL for development and tests: docker compose up -d
+# A fixed project name, so the data volume stays the same whatever the folder is called.
+name: haupcar-car-management
+
 services:
   postgres:
     image: postgres:17-alpine
