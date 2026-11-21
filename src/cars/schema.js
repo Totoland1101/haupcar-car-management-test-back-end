@@ -67,7 +67,11 @@ const carInputSchema = z.object({
     .refine((value) => !Number.isNaN(Date.parse(value)), 'Registration date is not a real date')
     .refine((value) => value <= today(), 'Registration date cannot be in the future')
     .nullish(),
-  registeredMileage: mileageField('Mileage at registration'),
+  registeredMileage: z
+    .number({ error: 'Mileage at registration is required' })
+    .int('Mileage at registration must be a whole number')
+    .min(0, 'Mileage at registration cannot be negative')
+    .max(10_000_000, 'Mileage at registration is too large'),
   status: z
     .enum(CAR_STATUSES, { error: `Status must be one of: ${CAR_STATUSES.join(', ')}` })
     .default('available'),

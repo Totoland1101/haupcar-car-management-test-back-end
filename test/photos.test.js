@@ -22,7 +22,7 @@ beforeEach(async () => {
   admin = await loginAs(app, db, 'admin', 'Admin');
   const res = await admin
     .post('/api/cars')
-    .send({ registrationNumber: '1กข 1234', province: 'กรุงเทพมหานคร', brand: 'Toyota', model: 'Yaris' })
+    .send({ registrationNumber: '1กข 1234', province: 'กรุงเทพมหานคร', brand: 'Toyota', model: 'Yaris', registeredMileage: 0 })
     .expect(201);
   carId = res.body.id;
 });

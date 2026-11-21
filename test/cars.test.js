@@ -16,6 +16,7 @@ const yaris = {
   year: 2023,
   color: 'White',
   mileage: 15200,
+  registeredMileage: 1200,
   status: 'available',
   notes: 'Spare key in the office drawer',
 };
@@ -25,6 +26,7 @@ const city = {
   province: 'เชียงใหม่',
   brand: 'Honda',
   model: 'City',
+  registeredMileage: 0,
   status: 'maintenance',
 };
 
@@ -64,8 +66,14 @@ describe('POST /api/cars', () => {
     assert.equal(res.body.createdAt, res.body.updatedAt);
   });
 
-  test('only requires plate, province, brand and model', async () => {
-    const car = await createCar({ registrationNumber: 'กข 1', province: 'ตาก', brand: 'Isuzu', model: 'D-Max' });
+  test('only requires plate, province, brand, model and mileage at registration', async () => {
+    const car = await createCar({
+      registrationNumber: 'กข 1',
+      province: 'ตาก',
+      brand: 'Isuzu',
+      model: 'D-Max',
+      registeredMileage: 0,
+    });
 
     assert.equal(car.status, 'available');
     assert.equal(car.year, null);
@@ -87,7 +95,7 @@ describe('POST /api/cars', () => {
       .expect(400);
 
     const fields = res.body.error.details.map((d) => d.field).sort();
-    assert.deepEqual(fields, ['brand', 'model', 'province', 'registrationNumber', 'status', 'year']);
+    assert.deepEqual(fields, ['brand', 'model', 'province', 'registeredMileage', 'registrationNumber', 'status', 'year']);
   });
 
   test('rejects a plate that already exists in the same province', async () => {
@@ -260,10 +268,14 @@ test('every table the migrations create starts with haup_', async () => {
 describe('registration date and mileage at registration', () => {
   const today = new Date().toLocaleDateString('en-CA');
 
-  test('default to today and empty', async () => {
+  test('the date defaults to today, and the mileage at registration is required', async () => {
     const car = await createCar(yaris);
     assert.equal(car.registeredOn, today);
-    assert.equal(car.registeredMileage, null);
+    assert.equal(car.registeredMileage, 1200);
+
+    const { registeredMileage, ...withoutMileage } = yaris;
+    const res = await api.post('/api/cars').send({ ...withoutMileage, registrationNumber: '9ขข 9999' }).expect(400);
+    assert.deepEqual(res.body.error.details, [{ field: 'registeredMileage', message: 'Mileage at registration is required' }]);
   });
 
   test('are stored when given, and kept apart from the current mileage', async () => {
