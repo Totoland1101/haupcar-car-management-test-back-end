@@ -49,7 +49,7 @@ function mileageField(label) {
 
 const carInputSchema = z.object({
   registrationNumber: requiredText('Registration number', 20)
-    .refine((value) => value === '' || normalizePlate(value) !== null, 'Use a Thai plate, for example 1กข 1234 or กข 1234')
+    .refine((value) => value === '' || normalizePlate(value) !== null, 'Use a Thai plate, for example 1กข 1234, กข 1234 or 70-1234')
     // "1กข1234" and "1กข  1234" should count as the same plate as "1กข 1234".
     .transform((value) => normalizePlate(value) ?? value),
   redPlate: z.boolean({ error: 'Red plate must be true or false' }).default(false),

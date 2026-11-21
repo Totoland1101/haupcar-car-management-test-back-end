@@ -14,15 +14,26 @@ const PROVINCES = [
   'อุดรธานี', 'อุตรดิตถ์', 'อุทัยธานี', 'อุบลราชธานี',
 ];
 
-// A Thai private car plate: an optional leading digit, one or two Thai consonants, then a
-// number from 1 to 9999. For example 1กข 1234, กข 1234 or ก 12.
-const PLATE = /^([1-9]?)\s*([ก-ฮ]{1,2})\s*([1-9][0-9]{0,3})$/;
+// Cars, pickups and taxis (Motor Vehicle Act): an optional leading digit, one or two Thai
+// consonants, then a number from 1 to 9999. For example 1กข 1234, กข 1234 or ก 12.
+const CAR_PLATE = /^([1-9]?)\s*([ก-ฮ]{1,2})\s*([1-9][0-9]{0,3})$/;
 
-// The plate written the same way every time, so 1กข1234 and 1กข  1234 both become 1กข 1234.
-// Returns null when the text isn't a Thai plate.
+// Trucks and buses (Land Transport Act): a two-digit vehicle type from 10 to 99, a dash,
+// then up to four digits, for example 70-1234. A space works in place of the dash.
+const TRANSPORT_PLATE = /^([1-9][0-9])\s*[-\s]\s*(?!0+$)([0-9]{1,4})$/;
+
+// The plate written the same way every time, so 1กข1234 becomes 1กข 1234 and 70 1234
+// becomes 70-1234. Returns null when the text isn't a Thai plate.
 function normalizePlate(text) {
-  const match = PLATE.exec(text.trim());
-  return match ? `${match[1]}${match[2]} ${match[3]}` : null;
+  const value = text.trim();
+
+  const car = CAR_PLATE.exec(value);
+  if (car) return `${car[1]}${car[2]} ${car[3]}`;
+
+  const transport = TRANSPORT_PLATE.exec(value);
+  if (transport) return `${transport[1]}-${transport[2]}`;
+
+  return null;
 }
 
 module.exports = { PROVINCES, normalizePlate };

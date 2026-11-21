@@ -91,11 +91,19 @@ describe('POST /api/cars', () => {
     assert.equal(joined.registrationNumber, '2ขค 5678');
   });
 
+  test('accepts truck and bus plates, with a dash or a space', async () => {
+    const truck = await createCar({ ...yaris, registrationNumber: '70-1234' });
+    assert.equal(truck.registrationNumber, '70-1234');
+
+    const bus = await createCar({ ...city, registrationNumber: ' 30 5678 ' });
+    assert.equal(bus.registrationNumber, '30-5678');
+  });
+
   test('only accepts Thai plates and Thai provinces', async () => {
-    for (const plate of ['EV 99', 'กขค 1234', 'กข 0123', 'กข 12345', '12กข 1234', '1234']) {
+    for (const plate of ['EV 99', 'กขค 1234', 'กข 0123', 'กข 12345', '12กข 1234', '1234', '07-1234', '700-1234', '70-12345', '70-0000']) {
       const res = await api.post('/api/cars').send({ ...yaris, registrationNumber: plate }).expect(400);
       assert.deepEqual(res.body.error.details, [
-        { field: 'registrationNumber', message: 'Use a Thai plate, for example 1กข 1234 or กข 1234' },
+        { field: 'registrationNumber', message: 'Use a Thai plate, for example 1กข 1234, กข 1234 or 70-1234' },
       ], plate);
     }
 
