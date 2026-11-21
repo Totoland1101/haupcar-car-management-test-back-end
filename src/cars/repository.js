@@ -1,10 +1,21 @@
 const { Op, UniqueConstraintError, col, fn, literal, where } = require('sequelize');
-const { CAR_STATUSES } = require('./schema');
+const { CAR_STATUSES, today } = require('./schema');
 
 const SEARCH_COLUMNS = ['registration_number', 'province', 'brand', 'model', 'color', 'notes'];
 
 // Fields the client may write. id and the timestamps are managed by Sequelize.
-const WRITABLE_FIELDS = ['registrationNumber', 'province', 'brand', 'model', 'year', 'color', 'mileage', 'status', 'notes'];
+const WRITABLE_FIELDS = [
+  'registrationNumber',
+  'province',
+  'brand',
+  'model',
+  'year',
+  'color',
+  'mileage',
+  'registeredMileage',
+  'status',
+  'notes',
+];
 
 class DuplicatePlateError extends Error {}
 
@@ -62,7 +73,7 @@ function createCarRepository(Car) {
 
     async create(input) {
       try {
-        const car = await Car.create(toAttributes(input));
+        const car = await Car.create({ ...toAttributes(input), registeredOn: input.registeredOn ?? today() });
         return car.toJSON();
       } catch (err) {
         rethrowDuplicate(err);
@@ -73,7 +84,10 @@ function createCarRepository(Car) {
       const car = await Car.findByPk(id);
       if (!car) return null;
       try {
-        await car.update(toAttributes(input));
+        // The registration date stays as it is unless a new one is given.
+        const attributes = toAttributes(input);
+        if (input.registeredOn) attributes.registeredOn = input.registeredOn;
+        await car.update(attributes);
         return car.toJSON();
       } catch (err) {
         rethrowDuplicate(err);

@@ -39,6 +39,17 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      // The day the car was registered in the system, and its mileage then
+      registeredOn: {
+        type: DataTypes.DATEONLY,
+        field: 'registered_on',
+        allowNull: false,
+      },
+      registeredMileage: {
+        type: DataTypes.INTEGER,
+        field: 'registered_mileage',
+        allowNull: true,
+      },
       status: {
         type: DataTypes.STRING(20),
         allowNull: false,

@@ -8,6 +8,7 @@ const SORTABLE_FIELDS = [
   'model',
   'year',
   'mileage',
+  'registeredOn',
   'createdAt',
   'updatedAt',
 ];
@@ -30,6 +31,20 @@ function optionalText(label, max) {
     .nullish();
 }
 
+// YYYY-MM-DD in the server's time zone
+function today() {
+  return new Date().toLocaleDateString('en-CA');
+}
+
+function mileageField(label) {
+  return z
+    .number({ error: `${label} must be a number` })
+    .int(`${label} must be a whole number`)
+    .min(0, `${label} cannot be negative`)
+    .max(10_000_000, `${label} is too large`)
+    .nullish();
+}
+
 const carInputSchema = z.object({
   registrationNumber: requiredText('Registration number', 20)
     // "1กข  1234" and "1กข 1234" should count as the same plate.
@@ -44,17 +59,23 @@ const carInputSchema = z.object({
     .max(maxYear, `Year must be ${maxYear} or earlier`)
     .nullish(),
   color: optionalText('Color', 30),
-  mileage: z
-    .number({ error: 'Mileage must be a number' })
-    .int('Mileage must be a whole number')
-    .min(0, 'Mileage cannot be negative')
-    .max(10_000_000, 'Mileage is too large')
+  mileage: mileageField('Mileage'),
+  // Left out, a new car gets today and an existing car keeps its date.
+  registeredOn: z
+    .string({ error: 'Registration date must be a date' })
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Registration date must look like 2026-11-22')
+    .refine((value) => !Number.isNaN(Date.parse(value)), 'Registration date is not a real date')
+    .refine((value) => value <= today(), 'Registration date cannot be in the future')
     .nullish(),
+  registeredMileage: mileageField('Mileage at registration'),
   status: z
     .enum(CAR_STATUSES, { error: `Status must be one of: ${CAR_STATUSES.join(', ')}` })
     .default('available'),
   notes: optionalText('Notes', 1000),
-});
+}).refine(
+  (car) => car.mileage == null || car.registeredMileage == null || car.mileage >= car.registeredMileage,
+  { path: ['mileage'], message: 'Mileage cannot be lower than the mileage at registration' }
+);
 
 const listQuerySchema = z.object({
   search: z.string().trim().max(100).optional(),
@@ -66,4 +87,4 @@ const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(10),
 });
 
-module.exports = { CAR_STATUSES, SORTABLE_FIELDS, carInputSchema, listQuerySchema };
+module.exports = { CAR_STATUSES, SORTABLE_FIELDS, carInputSchema, listQuerySchema, today };

@@ -256,3 +256,49 @@ test('every table the migrations create starts with haup_', async () => {
   assert.ok(tables.includes('haup_cars'));
   assert.deepEqual(tables.filter((name) => !name.startsWith('haup_')), []);
 });
+
+describe('registration date and mileage at registration', () => {
+  const today = new Date().toLocaleDateString('en-CA');
+
+  test('default to today and empty', async () => {
+    const car = await createCar(yaris);
+    assert.equal(car.registeredOn, today);
+    assert.equal(car.registeredMileage, null);
+  });
+
+  test('are stored when given, and kept apart from the current mileage', async () => {
+    const car = await createCar({ ...yaris, registeredOn: '2024-03-01', registeredMileage: 1200, mileage: 15200 });
+    assert.equal(car.registeredOn, '2024-03-01');
+    assert.equal(car.registeredMileage, 1200);
+    assert.equal(car.mileage, 15200);
+  });
+
+  test('an edit that leaves the date out keeps it', async () => {
+    const car = await createCar({ ...yaris, registeredOn: '2024-03-01' });
+    const res = await api.put(`/api/cars/${car.id}`).send({ ...yaris, mileage: 16000 }).expect(200);
+    assert.equal(res.body.registeredOn, '2024-03-01');
+  });
+
+  test('rejects a future or malformed date, and a current mileage below the registered one', async () => {
+    const res = await api
+      .post('/api/cars')
+      .send({ ...yaris, registeredOn: '2999-01-01', registeredMileage: 20000, mileage: 100 })
+      .expect(400);
+    assert.deepEqual(res.body.error.details.map((d) => d.field).sort(), ['mileage', 'registeredOn']);
+
+    const bad = await api.post('/api/cars').send({ ...yaris, registeredOn: '01/03/2024' }).expect(400);
+    assert.equal(bad.body.error.details[0].field, 'registeredOn');
+
+    const lower = await api.post('/api/cars').send({ ...yaris, registeredMileage: 20000, mileage: 100 }).expect(400);
+    assert.deepEqual(lower.body.error.details, [
+      { field: 'mileage', message: 'Mileage cannot be lower than the mileage at registration' },
+    ]);
+  });
+
+  test('can sort by registration date', async () => {
+    await createCar({ ...yaris, registeredOn: '2024-03-01' });
+    await createCar({ ...city, registeredOn: '2023-01-15' });
+    const res = await api.get('/api/cars?sortBy=registeredOn&order=asc').expect(200);
+    assert.deepEqual(res.body.data.map((c) => c.registeredOn), ['2023-01-15', '2024-03-01']);
+  });
+});
