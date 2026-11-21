@@ -3,7 +3,7 @@ const { PERMISSIONS } = require('../auth/permissions');
 const { HttpError } = require('../errors');
 const { parseId, validate } = require('../validation');
 const { DuplicateUsernameError, UnknownDepartmentError, UnknownRoleError } = require('./repository');
-const { userCreateSchema, userUpdateSchema } = require('./schema');
+const { resetPasswordSchema, userCreateSchema, userUpdateSchema } = require('./schema');
 
 async function saveOrConflict(save) {
   try {
@@ -57,6 +57,14 @@ function createUsersRouter(repo, { can }) {
     const user = await saveOrConflict(() => repo.update(id, input));
     if (!user) throw new HttpError(404, 'User not found');
     res.json(user);
+  });
+
+  // Sets a new password without knowing the old one, e.g. for someone who forgot theirs.
+  router.put('/:id/password', async (req, res) => {
+    const id = parseId(req.params.id, 'User');
+    const { password } = validate(resetPasswordSchema, req.body ?? {});
+    if (!(await repo.setPassword(id, password))) throw new HttpError(404, 'User not found');
+    res.status(204).end();
   });
 
   router.delete('/:id', async (req, res) => {

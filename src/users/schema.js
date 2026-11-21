@@ -70,4 +70,20 @@ const registerSchema = z.object({
   profile: profileSchema.pick({ firstName: true, lastName: true, email: true, phone: true }),
 });
 
-module.exports = { profileSchema, registerSchema, userCreateSchema, userUpdateSchema };
+// A user changing their own password has to know the current one.
+const changePasswordSchema = z.object({
+  currentPassword: z.string({ error: 'Current password is required' }).min(1, 'Current password is required'),
+  newPassword: password,
+});
+
+// An admin setting someone else's password
+const resetPasswordSchema = z.object({ password });
+
+module.exports = {
+  changePasswordSchema,
+  profileSchema,
+  registerSchema,
+  resetPasswordSchema,
+  userCreateSchema,
+  userUpdateSchema,
+};

@@ -1,5 +1,5 @@
 const { UniqueConstraintError } = require('sequelize');
-const { hashPassword } = require('../auth/password');
+const { hashPassword, verifyPassword } = require('../auth/password');
 
 class DuplicateUsernameError extends Error {}
 class UnknownRoleError extends Error {}
@@ -197,6 +197,17 @@ function createUserRepository({ User, Profile, Role, Department, Permission, seq
       await assertDepartmentExists(profile.departmentId);
       await Profile.update(profileFields(profile), { where: { userId } });
       return findAuthById(userId);
+    },
+
+    // Returns false when the user doesn't exist.
+    async setPassword(id, password) {
+      const [updated] = await User.update({ password: await hashPassword(password) }, { where: { id } });
+      return updated > 0;
+    },
+
+    async checkPassword(id, password) {
+      const user = await User.scope('withPassword').findByPk(id, { attributes: ['id', 'password'] });
+      return Boolean(user) && verifyPassword(password, user.password);
     },
 
     async remove(id) {

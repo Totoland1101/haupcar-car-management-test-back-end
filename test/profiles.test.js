@@ -174,3 +174,42 @@ describe('/api/departments', () => {
     assert.equal(me.body.profile.department, null);
   });
 });
+
+describe('changing passwords', () => {
+  const request = require('supertest');
+  const loginWith = (username, password) => request(app).post('/api/auth/login').send({ username, password });
+
+  test('a user changes their own password after giving the current one', async () => {
+    const viewer = await loginAs(app, db, 'viewer', 'Viewer');
+
+    const wrong = await viewer
+      .put('/api/auth/me/password')
+      .send({ currentPassword: 'not-it', newPassword: 'brand-new-password' })
+      .expect(400);
+    assert.deepEqual(wrong.body.error.details, [{ field: 'currentPassword', message: 'The current password is wrong' }]);
+
+    const short = await viewer.put('/api/auth/me/password').send({ currentPassword: 'password123', newPassword: 'short' }).expect(400);
+    assert.equal(short.body.error.details[0].field, 'newPassword');
+
+    await viewer.put('/api/auth/me/password').send({ currentPassword: 'password123', newPassword: 'brand-new-password' }).expect(204);
+    await loginWith('viewer', 'password123').expect(401);
+    await loginWith('viewer', 'brand-new-password').expect(200);
+  });
+
+  test('an admin sets a new password for another account', async () => {
+    await loginAs(app, db, 'staff', 'Staff');
+    const staff = await db.User.findOne({ where: { username: 'staff' } });
+
+    await admin.put(`/api/users/${staff.id}/password`).send({ password: 'reset-by-admin' }).expect(204);
+    await loginWith('staff', 'reset-by-admin').expect(200);
+
+    await admin.put('/api/users/9999/password').send({ password: 'reset-by-admin' }).expect(404);
+    await admin.put(`/api/users/${staff.id}/password`).send({ password: 'x' }).expect(400);
+  });
+
+  test('only user managers can reset someone else\'s password', async () => {
+    const staff = await loginAs(app, db, 'staff', 'Staff');
+    const me = await db.User.findOne({ where: { username: 'admin' } });
+    await staff.put(`/api/users/${me.id}/password`).send({ password: 'taken-over!' }).expect(403);
+  });
+});

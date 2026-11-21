@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const { HttpError } = require('../errors');
-const { profileSchema, registerSchema } = require('../users/schema');
+const { changePasswordSchema, profileSchema, registerSchema } = require('../users/schema');
 const { DuplicateUsernameError, UnknownDepartmentError } = require('../users/repository');
 const { validate } = require('../validation');
 const { verifyAgainstDummy, verifyPassword } = require('./password');
@@ -54,6 +54,17 @@ function createAuthRouter({ userRepo, auth, jwtSecret, jwtExpiresIn }) {
 
   router.get('/me', auth.authenticate, (req, res) => {
     res.json(req.user);
+  });
+
+  router.put('/me/password', auth.authenticate, async (req, res) => {
+    const { currentPassword, newPassword } = validate(changePasswordSchema, req.body ?? {});
+    if (!(await userRepo.checkPassword(req.user.id, currentPassword))) {
+      throw new HttpError(400, 'The current password is wrong', [
+        { field: 'currentPassword', message: 'The current password is wrong' },
+      ]);
+    }
+    await userRepo.setPassword(req.user.id, newPassword);
+    res.status(204).end();
   });
 
   // Anyone can edit their own details. The role and permissions aren't part of this.
