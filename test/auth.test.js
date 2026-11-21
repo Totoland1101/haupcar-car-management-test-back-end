@@ -11,7 +11,15 @@ process.env.NODE_ENV = 'test';
 const db = require('../db/models');
 
 const app = createApp({ db, jwtSecret: JWT_SECRET });
-const ALL_PERMISSIONS = ['car.create', 'car.delete', 'car.update', 'car.view', 'role.manage', 'user.manage'];
+const ALL_PERMISSIONS = [
+  'car.create',
+  'car.delete',
+  'car.update',
+  'car.view',
+  'role.manage',
+  'user.approve',
+  'user.manage',
+];
 
 let admin;
 

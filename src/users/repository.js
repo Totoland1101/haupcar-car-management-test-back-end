@@ -3,6 +3,8 @@ const { hashPassword } = require('../auth/password');
 
 class DuplicateUsernameError extends Error {}
 class UnknownRoleError extends Error {}
+// Approving an approved account, or rejecting one that isn't waiting
+class RegistrationStateError extends Error {}
 
 // The password hash and salt never leave this file.
 function toUser(user) {
@@ -12,7 +14,11 @@ function toUser(user) {
     name: user.name,
     isActive: user.isActive,
     lastLoginAt: user.lastLoginAt,
-    role: { id: user.role.id, name: user.role.name },
+    status: user.status,
+    // null for a registration that hasn't been approved yet
+    role: user.role ? { id: user.role.id, name: user.role.name } : null,
+    reviewedAt: user.reviewedAt,
+    reviewedBy: user.reviewedBy ? { id: user.reviewedBy.id, name: user.reviewedBy.name } : null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -21,7 +27,7 @@ function toUser(user) {
 function toAuthUser(user) {
   return {
     ...toUser(user),
-    permissions: user.role.permissions.map((permission) => permission.code).sort(),
+    permissions: (user.role?.permissions ?? []).map((permission) => permission.code).sort(),
   };
 }
 
@@ -34,13 +40,14 @@ function rethrowDuplicate(err) {
 
 function createUserRepository({ User, Role, Permission }) {
   const withRole = { model: Role, as: 'role', attributes: ['id', 'name'] };
+  const withReviewer = { model: User, as: 'reviewedBy', attributes: ['id', 'name'] };
   const withRoleAndPermissions = {
     ...withRole,
     include: [{ model: Permission, as: 'permissions', attributes: ['code'], through: { attributes: [] } }],
   };
 
   async function findById(id) {
-    const user = await User.findByPk(id, { include: [withRole] });
+    const user = await User.findByPk(id, { include: [withRole, withReviewer] });
     return user ? toUser(user) : null;
   }
 
@@ -52,8 +59,13 @@ function createUserRepository({ User, Role, Permission }) {
   return {
     findById,
 
+    // Approved accounts. Registrations are listed by listRegistrations.
     async list() {
-      const users = await User.findAll({ include: [withRole], order: [['username', 'ASC']] });
+      const users = await User.findAll({
+        where: { status: 'approved' },
+        include: [withRole, withReviewer],
+        order: [['username', 'ASC']],
+      });
       return users.map(toUser);
     },
 
@@ -77,15 +89,79 @@ function createUserRepository({ User, Role, Permission }) {
       await User.update({ lastLoginAt: new Date() }, { where: { id }, silent: true });
     },
 
-    async create({ password, ...input }) {
+    // An account made by an admin is approved straight away.
+    async create({ password, ...input }, { reviewerId }) {
       await assertRoleExists(input.roleId);
       const { hash, salt } = await hashPassword(password);
       try {
-        const user = await User.create({ ...input, passwordHash: hash, passwordSalt: salt });
+        const user = await User.create({
+          ...input,
+          passwordHash: hash,
+          passwordSalt: salt,
+          status: 'approved',
+          reviewedAt: new Date(),
+          reviewedById: reviewerId,
+        });
         return findById(user.id);
       } catch (err) {
         rethrowDuplicate(err);
       }
+    },
+
+    // Someone signing up on /register. They can't log in until the account is approved.
+    async register({ password, ...input }) {
+      const { hash, salt } = await hashPassword(password);
+      try {
+        const user = await User.create({
+          ...input,
+          passwordHash: hash,
+          passwordSalt: salt,
+          status: 'pending',
+          roleId: null,
+        });
+        return findById(user.id);
+      } catch (err) {
+        rethrowDuplicate(err);
+      }
+    },
+
+    async listRegistrations(status) {
+      const users = await User.findAll({
+        where: { status },
+        include: [withReviewer],
+        // Oldest first, so the people who have waited longest are at the top
+        order: [['createdAt', 'ASC']],
+      });
+      return users.map(toUser);
+    },
+
+    async registrationCounts() {
+      const rows = await User.count({ where: { status: ['pending', 'rejected'] }, group: ['status'] });
+      const counts = { pending: 0, rejected: 0 };
+      for (const { status, count } of rows) counts[status] = count;
+      return counts;
+    },
+
+    // A rejected registration can still be approved later, if the admin changes their mind.
+    async approve(id, { roleId, reviewerId }) {
+      const user = await User.findByPk(id);
+      if (!user) return null;
+      if (user.status === 'approved') throw new RegistrationStateError('This account is already approved');
+      await assertRoleExists(roleId);
+
+      await user.update({ status: 'approved', roleId, isActive: true, reviewedAt: new Date(), reviewedById: reviewerId });
+      return findById(id);
+    },
+
+    async reject(id, { reviewerId }) {
+      const user = await User.findByPk(id);
+      if (!user) return null;
+      if (user.status !== 'pending') {
+        throw new RegistrationStateError('Only registrations that are waiting for approval can be rejected');
+      }
+
+      await user.update({ status: 'rejected', reviewedAt: new Date(), reviewedById: reviewerId });
+      return findById(id);
     },
 
     // Replaces the account details. The password changes only when a new one is given.
@@ -121,4 +197,4 @@ function createUserRepository({ User, Role, Permission }) {
   };
 }
 
-module.exports = { DuplicateUsernameError, UnknownRoleError, createUserRepository };
+module.exports = { DuplicateUsernameError, RegistrationStateError, UnknownRoleError, createUserRepository };

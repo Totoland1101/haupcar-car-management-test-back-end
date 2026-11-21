@@ -13,7 +13,7 @@ function createAuth({ userRepo, jwtSecret }) {
 
     const userId = readToken(token, jwtSecret);
     const user = userId && (await userRepo.findAuthById(userId));
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || user.status !== 'approved') {
       throw new HttpError(401, 'Your session has ended. Please log in again');
     }
 

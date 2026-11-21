@@ -35,7 +35,7 @@ function createUsersRouter(repo, { can }) {
 
   router.post('/', async (req, res) => {
     const input = validate(userCreateSchema, req.body ?? {});
-    const user = await saveOrConflict(() => repo.create(input));
+    const user = await saveOrConflict(() => repo.create(input, { reviewerId: req.user.id }));
     res.status(201).location(`${req.baseUrl}/${user.id}`).json(user);
   });
 

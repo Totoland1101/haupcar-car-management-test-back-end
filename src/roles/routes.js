@@ -35,8 +35,8 @@ function createRolesRouter(repo, { can, canAny }) {
   const router = Router();
   const manage = can(PERMISSIONS.ROLE_MANAGE);
 
-  // The user form needs the role list too, so user managers can read it.
-  router.get('/', canAny(PERMISSIONS.ROLE_MANAGE, PERMISSIONS.USER_MANAGE), async (req, res) => {
+  // The user form and the approval dialog both need the role list.
+  router.get('/', canAny(PERMISSIONS.ROLE_MANAGE, PERMISSIONS.USER_MANAGE, PERMISSIONS.USER_APPROVE), async (req, res) => {
     res.json({ data: await repo.list() });
   });
 
