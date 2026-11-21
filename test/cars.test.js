@@ -83,12 +83,26 @@ describe('POST /api/cars', () => {
     assert.equal(car.notes, null);
   });
 
-  test('normalises spacing and letter case in the registration number', async () => {
+  test('writes the registration number the same way every time', async () => {
     const car = await createCar({ ...yaris, registrationNumber: '  1กข   1234 ' });
     assert.equal(car.registrationNumber, '1กข 1234');
 
-    const ev = await createCar({ ...city, registrationNumber: 'ev 99' });
-    assert.equal(ev.registrationNumber, 'EV 99');
+    const joined = await createCar({ ...city, registrationNumber: '2ขค5678' });
+    assert.equal(joined.registrationNumber, '2ขค 5678');
+  });
+
+  test('only accepts Thai plates and Thai provinces', async () => {
+    for (const plate of ['EV 99', 'กขค 1234', 'กข 0123', 'กข 12345', '12กข 1234', '1234']) {
+      const res = await api.post('/api/cars').send({ ...yaris, registrationNumber: plate }).expect(400);
+      assert.deepEqual(res.body.error.details, [
+        { field: 'registrationNumber', message: 'Use a Thai plate, for example 1กข 1234 or กข 1234' },
+      ], plate);
+    }
+
+    const province = await api.post('/api/cars').send({ ...yaris, province: 'Bangkok' }).expect(400);
+    assert.deepEqual(province.body.error.details, [
+      { field: 'province', message: 'Province must be one of the 77 Thai provinces' },
+    ]);
   });
 
   test('rejects missing and invalid fields with a 400 and per-field details', async () => {

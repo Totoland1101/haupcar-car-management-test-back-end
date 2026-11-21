@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { PROVINCES, normalizePlate } = require('./thai');
 
 const CAR_STATUSES = ['available', 'in_use', 'maintenance', 'inactive'];
 const FUEL_TYPES = ['gasoline', 'diesel', 'hybrid', 'plug_in_hybrid', 'electric', 'lpg', 'ngv'];
@@ -48,9 +49,15 @@ function mileageField(label) {
 
 const carInputSchema = z.object({
   registrationNumber: requiredText('Registration number', 20)
-    // "1กข  1234" and "1กข 1234" should count as the same plate.
-    .transform((value) => value.replace(/\s+/g, ' ').toUpperCase()),
-  province: requiredText('Province', 50),
+    .refine((value) => value === '' || normalizePlate(value) !== null, 'Use a Thai plate, for example 1กข 1234 or กข 1234')
+    // "1กข1234" and "1กข  1234" should count as the same plate as "1กข 1234".
+    .transform((value) => normalizePlate(value) ?? value),
+  province: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    z.enum(PROVINCES, {
+      error: (issue) => (issue.input ? 'Province must be one of the 77 Thai provinces' : 'Province is required'),
+    })
+  ),
   brand: requiredText('Brand', 50),
   model: requiredText('Model', 50),
   fuelType: z.enum(FUEL_TYPES, {
